@@ -59,7 +59,7 @@ def compute_heatmap(gradModel, image, classIdx, eps=1e-8):
     # return the resulting heatmap to the calling function
     return heatmap
 
-def find_target_layer(self, model):
+def find_target_layer(model):
     # attempt to find the final convolutional layer in the network
     # by looping over the layers of the network in reverse order
     for layer in reversed(model.layers):
