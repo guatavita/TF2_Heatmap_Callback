@@ -15,8 +15,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from Base_Deeplearning_Code.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
 
-def compute_heatmap(self, gradModel, image, classIdx, eps=1e-8):
-
+def compute_heatmap(gradModel, image, classIdx, eps=1e-8):
     # record operations for automatic differentiation
     with tf.GradientTape() as tape:
         # cast the image tensor to a float-32 data type, pass the
@@ -60,6 +59,16 @@ def compute_heatmap(self, gradModel, image, classIdx, eps=1e-8):
     # return the resulting heatmap to the calling function
     return heatmap
 
+def find_target_layer(self, model):
+    # attempt to find the final convolutional layer in the network
+    # by looping over the layers of the network in reverse order
+    for layer in reversed(model.layers):
+        # check to see if the layer has a 4D output
+        if len(layer.output_shape) == 4 and ('activation' in layer.name.lower() or 'pooling' not in layer.name.lower()):
+            return layer.name
+    # otherwise, we could not find a 4D layer so the GradCAM
+    # algorithm cannot be applied
+    raise ValueError("Could not find 4D layer. Cannot apply GradCAM.")
 
 class Add_Heatmap(Callback):
     def __init__(self, log_dir, validation_steps, validation_data=None, class_names=[], frequency=5, nb_images=5,
@@ -76,18 +85,6 @@ class Add_Heatmap(Callback):
         self.image_rows = image_rows
         self.image_cols = image_cols
         self.file_writer_cm = tf.summary.create_file_writer(os.path.join(log_dir, 'val_heatmap'))
-
-    def find_target_layer(self):
-        # attempt to find the final convolutional layer in the network
-        # by looping over the layers of the network in reverse order
-        for layer in reversed(self.model.layers):
-            # check to see if the layer has a 4D output
-            if len(layer.output_shape) == 4 and ('activation' in layer.name.lower() or 'pooling' not in layer.name.lower()):
-                return layer.name
-        # otherwise, we could not find a 4D layer so the GradCAM
-        # algorithm cannot be applied
-        raise ValueError("Could not find 4D layer. Cannot apply GradCAM.")
-
 
     def plot_to_image(self, figure):
         """Converts the matplotlib plot specified by 'figure' to a PNG image and
@@ -137,7 +134,7 @@ class Add_Heatmap(Callback):
         # if the layer name is None, attempt to automatically find
         # the target output layer
         if self.layerName is None:
-            self.layerName = self.find_target_layer()
+            self.layerName = find_target_layer(self.model)
 
             # construct our gradient model by supplying (1) the inputs
             # to our pre-trained model, (2) the output of the (presumably)
