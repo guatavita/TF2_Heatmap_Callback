@@ -23,6 +23,9 @@ def compute_heatmap(gradModel, image, classIdx, eps=1e-8):
         # associated with the specific class index
         # inputs = tf.cast(image, tf.float32)
         # (convOutputs, predictions) = self.gradModel(inputs)
+        # if not len(image.shape) > 3:
+        #     image = image[None, ...]
+        image = tf.squeeze(image, axis=0)
         (convOutputs, predictions) = gradModel(image[None, ...])
         loss = predictions[0][:, classIdx]
     # use automatic differentiation to compute the gradients
@@ -70,6 +73,33 @@ def find_target_layer(model):
     # algorithm cannot be applied
     raise ValueError("Could not find 4D layer. Cannot apply GradCAM.")
 
+def plot_heatmap(heatmap, image, gt_id, pred_id, prob, alpha=0.5, eps=1e-8, add_colormap=False, contour=False):
+    figure = plt.figure(figsize=(8, 8))
+    image = image.numpy()
+    numer = image - np.min(image)
+    denom = (image.max() - image.min()) + eps
+    image = numer / denom
+    image = (image * 255).astype("uint8")
+    plt.imshow(image, cmap='gray')
+    if contour:
+        plt.contour(heatmap, cmap='jet', levels=10, alpha=1.0)
+    else:
+        plt.imshow(heatmap, cmap='jet', alpha=alpha)
+    string = "GT: {}   PRED: {} ({:.2f}%)".format(gt_id, pred_id, 100 * prob)
+    plt.text(50, 50, string, fontsize=12, color='white',
+             bbox=dict(fill='black', edgecolor='white', linewidth=4, alpha=0.5))
+
+    # TODO add colormap inside the image
+    if add_colormap:
+        dmin=0
+        dmax=255
+        sm_dose = plt.cm.ScalarMappable(cmap='jet', norm=plt.Normalize(vmin=dmin, vmax=dmax))
+        sm_dose.set_array([])
+        plt.colorbar(sm_dose, shrink=0.5, ticks=np.arange(dmin, dmax, 50), orientation='vertical', pad=0.0)
+
+    plt.axis('off')
+    return figure
+
 class Add_Heatmap(Callback):
     def __init__(self, log_dir, validation_steps, validation_data=None, class_names=[], frequency=5, nb_images=5,
                  layerName=None, image_rows=512, image_cols=512):
@@ -105,30 +135,6 @@ class Add_Heatmap(Callback):
         image = tf.cast(image, np.uint8)
         return image
 
-    def plot_heatmap(self, heatmap, image, gt_id, pred_id, prob, alpha=0.5, eps=1e-8, add_colormap=False):
-        figure = plt.figure(figsize=(8, 8))
-        image = image.numpy()
-        numer = image - np.min(image)
-        denom = (image.max() - image.min()) + eps
-        image = numer / denom
-        image = (image * 255).astype("uint8")
-        plt.imshow(image, cmap='gray')
-        plt.imshow(heatmap, cmap='jet', alpha=alpha)
-        string = "GT: {}   PRED: {} ({:.2f}%)".format(gt_id, pred_id, 100 * prob)
-        plt.text(50, 50, string, fontsize=12, color='white',
-                 bbox=dict(fill='black', edgecolor='white', linewidth=4, alpha=0.5))
-
-        # TODO add colormap inside the image
-        if add_colormap:
-            dmin=0
-            dmax=255
-            sm_dose = plt.cm.ScalarMappable(cmap='jet', norm=plt.Normalize(vmin=dmin, vmax=dmax))
-            sm_dose.set_array([])
-            plt.colorbar(sm_dose, shrink=0.5, ticks=np.arange(dmin, dmax, 50), orientation='vertical', pad=0.0)
-
-        plt.axis('off')
-        return figure
-
     def write_heatmaps(self):
 
         # if the layer name is None, attempt to automatically find
@@ -162,7 +168,7 @@ class Add_Heatmap(Callback):
                 add_colormap = True
             else:
                 add_colormap = False
-            figure = self.plot_heatmap(heatmap, x, gt_id=gt_id, pred_id=pred_id, prob=prob, alpha=0.5,
+            figure = plot_heatmap(heatmap, x, gt_id=gt_id, pred_id=pred_id, prob=prob, alpha=0.5,
                                        add_colormap=add_colormap)
             image = self.plot_to_image(figure)
             if i == 0:
