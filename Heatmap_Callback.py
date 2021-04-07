@@ -15,6 +15,51 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from Base_Deeplearning_Code.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
 
+def compute_heatmap(self, gradModel, image, classIdx, eps=1e-8):
+
+    # record operations for automatic differentiation
+    with tf.GradientTape() as tape:
+        # cast the image tensor to a float-32 data type, pass the
+        # image through the gradient model, and grab the loss
+        # associated with the specific class index
+        # inputs = tf.cast(image, tf.float32)
+        # (convOutputs, predictions) = self.gradModel(inputs)
+        (convOutputs, predictions) = gradModel(image[None, ...])
+        loss = predictions[0][:, classIdx]
+    # use automatic differentiation to compute the gradients
+    grads = tape.gradient(loss, convOutputs)
+
+    # compute the guided gradients
+    castConvOutputs = tf.cast(convOutputs > 0, "float32")
+    castGrads = tf.cast(grads > 0, "float32")
+    guidedGrads = castConvOutputs * castGrads * grads
+    # the convolution and guided gradients have a batch dimension
+    # (which we don't need) so let's grab the volume itself and
+    # discard the batch
+    convOutputs = convOutputs[0]
+    guidedGrads = guidedGrads[0]
+
+    # compute the average of the gradient values, and using them
+    # as weights, compute the ponderation of the filters with
+    # respect to the weights
+    weights = tf.reduce_mean(guidedGrads, axis=(0, 1))
+    cam = tf.reduce_sum(tf.multiply(weights, convOutputs), axis=-1)
+
+    # grab the spatial dimensions of the input image and resize
+    # the output class activation map to match the input image
+    # dimensions
+    (w, h) = (image.shape[1], image.shape[0])
+    heatmap = cv2.resize(cam.numpy(), (w, h))
+    # normalize the heatmap such that all values lie in the range
+    # [0, 1], scale the resulting values to the range [0, 255],
+    # and then convert to an unsigned 8-bit integer
+    numer = heatmap - np.min(heatmap)
+    denom = (heatmap.max() - heatmap.min()) + eps
+    heatmap = numer / denom
+    heatmap = (heatmap * 255).astype("uint8")
+    # return the resulting heatmap to the calling function
+    return heatmap
+
 
 class Add_Heatmap(Callback):
     def __init__(self, log_dir, validation_steps, validation_data=None, class_names=[], frequency=5, nb_images=5,
@@ -43,50 +88,6 @@ class Add_Heatmap(Callback):
         # algorithm cannot be applied
         raise ValueError("Could not find 4D layer. Cannot apply GradCAM.")
 
-    def compute_heatmap(self, image, classIdx, eps=1e-8):
-
-        # record operations for automatic differentiation
-        with tf.GradientTape() as tape:
-            # cast the image tensor to a float-32 data type, pass the
-            # image through the gradient model, and grab the loss
-            # associated with the specific class index
-            # inputs = tf.cast(image, tf.float32)
-            # (convOutputs, predictions) = self.gradModel(inputs)
-            (convOutputs, predictions) = self.gradModel(image[None, ...])
-            loss = predictions[0][:, classIdx]
-        # use automatic differentiation to compute the gradients
-        grads = tape.gradient(loss, convOutputs)
-
-        # compute the guided gradients
-        castConvOutputs = tf.cast(convOutputs > 0, "float32")
-        castGrads = tf.cast(grads > 0, "float32")
-        guidedGrads = castConvOutputs * castGrads * grads
-        # the convolution and guided gradients have a batch dimension
-        # (which we don't need) so let's grab the volume itself and
-        # discard the batch
-        convOutputs = convOutputs[0]
-        guidedGrads = guidedGrads[0]
-
-        # compute the average of the gradient values, and using them
-        # as weights, compute the ponderation of the filters with
-        # respect to the weights
-        weights = tf.reduce_mean(guidedGrads, axis=(0, 1))
-        cam = tf.reduce_sum(tf.multiply(weights, convOutputs), axis=-1)
-
-        # grab the spatial dimensions of the input image and resize
-        # the output class activation map to match the input image
-        # dimensions
-        (w, h) = (image.shape[1], image.shape[0])
-        heatmap = cv2.resize(cam.numpy(), (w, h))
-        # normalize the heatmap such that all values lie in the range
-        # [0, 1], scale the resulting values to the range [0, 255],
-        # and then convert to an unsigned 8-bit integer
-        numer = heatmap - np.min(heatmap)
-        denom = (heatmap.max() - heatmap.min()) + eps
-        heatmap = numer / denom
-        heatmap = (heatmap * 255).astype("uint8")
-        # return the resulting heatmap to the calling function
-        return heatmap
 
     def plot_to_image(self, figure):
         """Converts the matplotlib plot specified by 'figure' to a PNG image and
@@ -159,7 +160,7 @@ class Add_Heatmap(Callback):
             x = x_batch[0][batch_id]
 
             # initialize our gradient class activation map and build the heatmap
-            heatmap = self.compute_heatmap(x, pred_id)
+            heatmap = compute_heatmap(self.gradModel, x, pred_id)
             if i == 0:
                 add_colormap = True
             else:
