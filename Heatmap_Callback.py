@@ -25,7 +25,8 @@ def compute_heatmap(gradModel, image, classIdx, eps=1e-8):
         # (convOutputs, predictions) = self.gradModel(inputs)
         # if not len(image.shape) > 3:
         #     image = image[None, ...]
-        image = tf.squeeze(image, axis=0)
+        if image.shape[0] == 1:
+            image = tf.squeeze(image, axis=0)
         (convOutputs, predictions) = gradModel(image[None, ...])
         loss = predictions[0][:, classIdx]
     # use automatic differentiation to compute the gradients
