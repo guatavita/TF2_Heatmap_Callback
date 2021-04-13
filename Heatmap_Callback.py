@@ -81,7 +81,7 @@ def find_target_layer(model):
     # algorithm cannot be applied
     raise ValueError("Could not find 4D layer. Cannot apply GradCAM.")
 
-def plot_heatmap(heatmap, image, gt_id, pred_id, prob, alpha=0.5, eps=1e-8, add_colormap=False, contour=False):
+def plot_heatmap(heatmap, image, gt_id, pred_id, prob, class_names=None, alpha=0.5, eps=1e-8, add_colormap=False, contour=False):
     figure = plt.figure(figsize=(8, 8))
     image = image.numpy()
     numer = image - np.min(image)
@@ -93,7 +93,10 @@ def plot_heatmap(heatmap, image, gt_id, pred_id, prob, alpha=0.5, eps=1e-8, add_
         plt.contour(heatmap, cmap='jet', levels=10, alpha=1.0)
     else:
         plt.imshow(heatmap, cmap='jet', alpha=alpha)
-    string = "GT: {}   PRED: {} ({:.2f}%)".format(gt_id, pred_id, 100 * prob)
+    if class_names:
+        string = "GT: {}   PRED: {} ({:.2f}%)".format(class_names[gt_id], class_names[pred_id], 100 * prob)
+    else:
+        string = "GT: {}   PRED: {} ({:.2f}%)".format(gt_id, pred_id, 100 * prob)
     plt.text(50, 50, string, fontsize=12, color='white',
              bbox=dict(fill='black', edgecolor='white', linewidth=4, alpha=0.5))
 
@@ -182,7 +185,7 @@ class Add_Heatmap(Callback):
                 heatmap=heatmap[keep_indice]
                 x=x[keep_indice]
 
-            figure = plot_heatmap(heatmap, x, gt_id=gt_id, pred_id=pred_id, prob=prob, alpha=0.5,
+            figure = plot_heatmap(heatmap, x, gt_id=gt_id, pred_id=pred_id, prob=prob, class_names=self.class_names, alpha=0.5,
                                        add_colormap=add_colormap)
             image = self.plot_to_image(figure)
             if i == 0:
