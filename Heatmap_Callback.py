@@ -113,7 +113,7 @@ def plot_heatmap(heatmap, image, gt_id, pred_id, prob, class_names=None, alpha=0
 
 class Add_Heatmap(Callback):
     def __init__(self, log_dir, validation_steps, validation_data=None, class_names=[], frequency=5, nb_images=5,
-                 layerName=None, image_rows=512, image_cols=512):
+                 layerName=None, image_rows=512, image_cols=512, colormap_as_contour=False):
         super(Add_Heatmap, self).__init__()
         if validation_data is None:
             AssertionError('Need to provide validation data')
@@ -125,6 +125,7 @@ class Add_Heatmap(Callback):
         self.layerName = layerName
         self.image_rows = image_rows
         self.image_cols = image_cols
+        self.colormap_as_contour = colormap_as_contour
         self.file_writer_cm = tf.summary.create_file_writer(os.path.join(log_dir, 'val_heatmap'))
 
     def plot_to_image(self, figure):
@@ -186,7 +187,7 @@ class Add_Heatmap(Callback):
                 x=x[keep_indice]
 
             figure = plot_heatmap(heatmap, x, gt_id=gt_id, pred_id=pred_id, prob=prob, class_names=self.class_names, alpha=0.5,
-                                       add_colormap=add_colormap)
+                                       add_colormap=add_colormap, contour=self.colormap_as_contour)
             image = self.plot_to_image(figure)
             if i == 0:
                 out_image = image
