@@ -15,7 +15,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from Base_Deeplearning_Code.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
 
-def compute_heatmap(gradModel, image, classIdx, eps=1e-8):
+def compute_heatmap(gradModel, image, classIdx, eps=1e-24):
     # record operations for automatic differentiation
     with tf.GradientTape() as tape:
         # cast the image tensor to a float-32 data type, pass the
@@ -45,14 +45,21 @@ def compute_heatmap(gradModel, image, classIdx, eps=1e-8):
     # compute the average of the gradient values, and using them
     # as weights, compute the ponderation of the filters with
     # respect to the weights
-    weights = tf.reduce_mean(guidedGrads, axis=(0, 1))
+    # TODO check if computing mean over the 32*16*16 axis is the right way for 3D output conv
+    weights = tf.reduce_mean(guidedGrads, axis=tuple(range(-len(guidedGrads.shape),-1)))
     cam = tf.reduce_sum(tf.multiply(weights, convOutputs), axis=-1)
 
     # grab the spatial dimensions of the input image and resize
     # the output class activation map to match the input image
     # dimensions
-    (w, h) = (image.shape[1], image.shape[0])
-    heatmap = cv2.resize(cam.numpy(), (w, h))
+    (w, h) = (image.shape[-2], image.shape[-3])
+    if len(cam.shape) == 3:
+        z = cam.shape[0]
+        heatmap = np.zeros(shape=(z, w, h))
+        for ind in range(z):
+            heatmap[ind] = cv2.resize(cam.numpy()[ind], (w, h))
+    else:
+        heatmap = cv2.resize(cam.numpy(), (w, h))
     # normalize the heatmap such that all values lie in the range
     # [0, 1], scale the resulting values to the range [0, 255],
     # and then convert to an unsigned 8-bit integer
@@ -68,7 +75,7 @@ def find_target_layer(model):
     # by looping over the layers of the network in reverse order
     for layer in reversed(model.layers):
         # check to see if the layer has a 4D output
-        if len(layer.output_shape) == 4 and ('activation' in layer.name.lower() or 'pooling' not in layer.name.lower()):
+        if len(layer.output_shape) >= 4 and ('activation' in layer.name.lower() or 'pooling' not in layer.name.lower()):
             return layer.name
     # otherwise, we could not find a 4D layer so the GradCAM
     # algorithm cannot be applied
@@ -169,6 +176,12 @@ class Add_Heatmap(Callback):
                 add_colormap = True
             else:
                 add_colormap = False
+
+            if len(x.shape) == 4:
+                keep_indice=int(np.median(np.where(heatmap >= np.max(heatmap)), axis=-1)[0])
+                heatmap=heatmap[keep_indice]
+                x=x[keep_indice]
+
             figure = plot_heatmap(heatmap, x, gt_id=gt_id, pred_id=pred_id, prob=prob, alpha=0.5,
                                        add_colormap=add_colormap)
             image = self.plot_to_image(figure)
