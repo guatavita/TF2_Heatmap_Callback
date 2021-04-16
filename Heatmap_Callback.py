@@ -182,7 +182,8 @@ class Add_Heatmap(Callback):
                 add_colormap = False
 
             if len(x.shape) == 4:
-                keep_indice=int(np.median(np.where(heatmap >= np.max(heatmap)), axis=-1)[0])
+                # keep_indice=int(np.median(np.where(heatmap >= np.max(heatmap)), axis=-1)[0]) #median slice of slices with high activation
+                keep_indice = x.shape[0]//2 #median slice
                 heatmap=heatmap[keep_indice]
                 x=x[keep_indice]
 
