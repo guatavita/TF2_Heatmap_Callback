@@ -111,10 +111,10 @@ def plot_heatmap(heatmap, image, gt_id, pred_id, prob, class_names=None, alpha=0
     plt.axis('off')
     return figure
 
-class Add_Heatmap(Callback):
+class Add_Grad_CAM(Callback):
     def __init__(self, log_dir, validation_steps, validation_data=None, class_names=[], frequency=5, nb_images=5,
                  layerName=None, image_rows=512, image_cols=512, colormap_as_contour=False):
-        super(Add_Heatmap, self).__init__()
+        super(Add_Grad_CAM, self).__init__()
         if validation_data is None:
             AssertionError('Need to provide validation data')
         self.validation_data = iter(validation_data)
