@@ -53,7 +53,7 @@ def plot_heatmap(heatmap, image, gt_id, pred_id, prob, class_names=None, alpha=0
     if add_colormap:
         dmin=0
         dmax=255
-        sm_dose = plt.cm.ScalarMappable(cmap='jet', norm=plt.Normalize(vmin=dmin, vmax=dmax))
+        sm_dose = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=dmin, vmax=dmax))
         sm_dose.set_array([])
         plt.colorbar(sm_dose, shrink=0.5, ticks=np.arange(dmin, dmax, 50), orientation='vertical', pad=0.0)
 
