@@ -1,21 +1,15 @@
 __author__ = 'Bastien Rigaud'
 
 import os
-import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import Callback
-from tensorflow.keras import backend as K
-import numpy as np
-import io
+
 import cv2
 
-import matplotlib
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-
+from .heatmap_tools import *
 from Base_Deeplearning_Code.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
 
-def compute_heatmap(gradModel, image, classIdx, eps=1e-24):
+def compute_Grad_CAM(gradModel, image, classIdx, eps=1e-24):
     # record operations for automatic differentiation
     with tf.GradientTape() as tape:
         # cast the image tensor to a float-32 data type, pass the
@@ -45,7 +39,6 @@ def compute_heatmap(gradModel, image, classIdx, eps=1e-24):
     # compute the average of the gradient values, and using them
     # as weights, compute the ponderation of the filters with
     # respect to the weights
-    # TODO check if computing mean over the 32*16*16 axis is the right way for 3D output conv
     weights = tf.reduce_mean(guidedGrads, axis=tuple(range(-len(guidedGrads.shape),-1)))
     cam = tf.reduce_sum(tf.multiply(weights, convOutputs), axis=-1)
 
@@ -70,47 +63,6 @@ def compute_heatmap(gradModel, image, classIdx, eps=1e-24):
     # return the resulting heatmap to the calling function
     return heatmap
 
-def find_target_layer(model):
-    # attempt to find the final convolutional layer in the network
-    # by looping over the layers of the network in reverse order
-    for layer in reversed(model.layers):
-        # check to see if the layer has a 4D output
-        if len(layer.output_shape) >= 4 and ('activation' in layer.name.lower() or 'pooling' not in layer.name.lower()):
-            return layer.name
-    # otherwise, we could not find a 4D layer so the GradCAM
-    # algorithm cannot be applied
-    raise ValueError("Could not find 4D layer. Cannot apply GradCAM.")
-
-def plot_heatmap(heatmap, image, gt_id, pred_id, prob, class_names=None, alpha=0.5, eps=1e-8, add_colormap=False, contour=False):
-    figure = plt.figure(figsize=(8, 8))
-    image = image.numpy()
-    numer = image - np.min(image)
-    denom = (image.max() - image.min()) + eps
-    image = numer / denom
-    image = (image * 255).astype("uint8")
-    plt.imshow(image, cmap='gray')
-    if contour:
-        plt.contour(heatmap, cmap='jet', levels=10, alpha=1.0)
-    else:
-        plt.imshow(heatmap, cmap='jet', alpha=alpha)
-    if class_names:
-        string = "GT: {}   PRED: {} ({:.2f}%)".format(class_names[gt_id], class_names[pred_id], 100 * prob)
-    else:
-        string = "GT: {}   PRED: {} ({:.2f}%)".format(gt_id, pred_id, 100 * prob)
-    plt.text(50, 50, string, fontsize=12, color='white',
-             bbox=dict(fill='black', edgecolor='white', linewidth=4, alpha=0.5))
-
-    # TODO add colormap inside the image
-    if add_colormap:
-        dmin=0
-        dmax=255
-        sm_dose = plt.cm.ScalarMappable(cmap='jet', norm=plt.Normalize(vmin=dmin, vmax=dmax))
-        sm_dose.set_array([])
-        plt.colorbar(sm_dose, shrink=0.5, ticks=np.arange(dmin, dmax, 50), orientation='vertical', pad=0.0)
-
-    plt.axis('off')
-    return figure
-
 class Add_Grad_CAM(Callback):
     def __init__(self, log_dir, validation_steps, validation_data=None, class_names=[], frequency=5, nb_images=5,
                  layerName=None, image_rows=512, image_cols=512, colormap_as_contour=False):
@@ -126,26 +78,7 @@ class Add_Grad_CAM(Callback):
         self.image_rows = image_rows
         self.image_cols = image_cols
         self.colormap_as_contour = colormap_as_contour
-        self.file_writer_cm = tf.summary.create_file_writer(os.path.join(log_dir, 'val_heatmap'))
-
-    def plot_to_image(self, figure):
-        """Converts the matplotlib plot specified by 'figure' to a PNG image and
-        returns it. The supplied figure is closed and inaccessible after this call."""
-        # Save the plot to a PNG in memory.
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-        # Closing the figure prevents it from being displayed
-        plt.close(figure)
-        buf.seek(0)
-        # Convert PNG buffer to TF image
-        image = tf.image.decode_png(buf.getvalue(), channels=4)
-        # Add the batch dimension
-        image = tf.expand_dims(image, 0)
-        image = tf.image.resize(image, (self.image_rows, self.image_cols), method='bilinear',
-                                preserve_aspect_ratio=True)
-        image = tf.image.resize_with_crop_or_pad(image, target_height=self.image_rows, target_width=self.image_cols)
-        image = tf.cast(image, np.uint8)
-        return image
+        self.file_writer_cm = tf.summary.create_file_writer(os.path.join(log_dir, 'val_Grad_CAM'))
 
     def write_heatmaps(self):
 
@@ -175,7 +108,7 @@ class Add_Grad_CAM(Callback):
             x = x_batch[0][batch_id]
 
             # initialize our gradient class activation map and build the heatmap
-            heatmap = compute_heatmap(self.gradModel, x, pred_id)
+            heatmap = compute_Grad_CAM(self.gradModel, x, pred_id)
             if i == 0:
                 add_colormap = True
             else:
@@ -189,7 +122,7 @@ class Add_Grad_CAM(Callback):
 
             figure = plot_heatmap(heatmap, x, gt_id=gt_id, pred_id=pred_id, prob=prob, class_names=self.class_names, alpha=0.5,
                                        add_colormap=add_colormap, contour=self.colormap_as_contour)
-            image = self.plot_to_image(figure)
+            image = plot_to_image(figure, image_rows=self.image_rows, image_cols=self.image_cols)
             if i == 0:
                 out_image = image
             else:
@@ -201,4 +134,4 @@ class Add_Grad_CAM(Callback):
         # Log the confusion matrix as an image summary.
         if self.frequency != 0 and epoch != 0 and epoch % self.frequency == 0:
             with self.file_writer_cm.as_default():
-                tf.summary.image("Heatmap", self.write_heatmaps(), step=epoch)
+                tf.summary.image("Grad_CAM", self.write_heatmaps(), step=epoch)
