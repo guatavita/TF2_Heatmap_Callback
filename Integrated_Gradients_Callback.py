@@ -82,7 +82,7 @@ def integrated_gradients(model,
     total_gradients = gradient_batches.stack()
 
     # 4. Integral approximation through averaging gradients.
-    avg_gradients = integral_approximation(gradients=total_gradients, method=method)
+    avg_gradients = integral_approximation(gradients=total_gradients, method=method, dtype=dtype)
 
     # 5. Scale integrated gradients with respect to input.
     integrated_gradients = (input - baseline) * avg_gradients
